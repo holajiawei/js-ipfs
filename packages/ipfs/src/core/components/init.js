@@ -109,12 +109,15 @@ module.exports = ({
     }
 
     const pinManager = new PinManager(repo, dag)
-    await pinManager.load()
+    const pinAddAll = Components.pin.addAll({ pinManager, gcLock, dag })
+    const pinRmAll = Components.pin.rmAll({ pinManager, gcLock, dag })
 
     const pin = {
-      add: Components.pin.add({ pinManager, gcLock, dag }),
+      add: Components.pin.add({ addAll: pinAddAll }),
+      addAll: pinAddAll,
       ls: Components.pin.ls({ pinManager, dag }),
-      rm: Components.pin.rm({ pinManager, gcLock, dag })
+      rm: Components.pin.rm({ rmAll: pinRmAll }),
+      rmAll: pinRmAll
     }
 
     // FIXME: resolve this circular dependency
@@ -131,7 +134,7 @@ module.exports = ({
 
     if (!isInitialized && !options.emptyRepo) {
       // add empty unixfs dir object (go-ipfs assumes this exists)
-      const emptyDirCid = await addEmptyDir({ dag })
+      const emptyDirCid = await addEmptyDir({ dag, pin })
 
       log('adding default assets')
       await initAssets({ addAll, print })
@@ -270,14 +273,17 @@ function createPeerId ({ privateKey, bits, print }) {
   }
 }
 
-function addEmptyDir ({ dag }) {
+async function addEmptyDir ({ dag, pin }) {
   const node = new DAGNode(new UnixFs('directory').marshal())
-  return dag.put(node, {
+  const cid = await dag.put(node, {
     version: 0,
     format: multicodec.DAG_PB,
     hashAlg: multicodec.SHA2_256,
     preload: false
   })
+  await pin.add(cid)
+
+  return cid
 }
 
 // Apply profiles (e.g. ['server', 'lowpower']) to config
